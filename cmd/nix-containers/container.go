@@ -333,7 +333,6 @@ func readImageLoadedRef(
 			if strings.HasPrefix(stream, idPrefix) {
 				// nix emits a tagless tarball; docker load returns the digest
 				// only. Reconstruct a taggable ref from the known target ref.
-				// ponytail: relies on ref.Context() being the repo the tag is applied to.
 				return name.ParseReference(
 					ref.Context().String() + "@" + "sha256:" + strings.TrimPrefix(stream, idPrefix),
 				)
