@@ -15,9 +15,9 @@ directly from the CLI.
 
 ## Usage
 
-Build container images directly from Nix flakes. Supports multi-platform
-builds and pushing to container registries. Integrates with Skaffold as a
-custom builder.
+Build container images directly from Nix flakes. Supports multi-platform builds
+and pushing to container registries. Integrates with Skaffold as a custom
+builder.
 
 ## Commit Style
 
@@ -31,14 +31,13 @@ custom builder.
 - The commit title **is** the PR title; the commit body **is** the PR body
 - Split work into stacked PRs to keep each PR small and reviewable
 - To pull down an existing stack: `ghstack checkout <PR_NUMBER>`
-- To update a PR: edit files, then `jj squash` (or `git commit --amend`) into the
-  **target commit** of the stack — the one that PR represents; the commit message
-  updates the PR title and body automatically when resubmitted
+- To update a PR: edit files, then `jj squash` (or `git commit --amend`) into
+  the **target commit** of the stack — the one that PR represents; the commit
+  message updates the PR title and body automatically when resubmitted
 - Resubmit with `ghstack` after squashing
 - `ghstack land` on the head PR to land the entire stack
 - Never `gh pr merge` (creates poisoned commits)
 - Never force-push ghstack branches
-
 
 ## Protect `main`
 
@@ -47,5 +46,5 @@ custom builder.
 - Require signed commits
 - Squash+rebase merge only
 
-*Licensed under AGPL-3.0. Test with both `docker` and `containerd` runtimes.
-Always use worktrees when making changes.*
+_Licensed under AGPL-3.0. Test with both `docker` and `containerd` runtimes.
+Always use worktrees when making changes._
