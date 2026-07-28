@@ -153,7 +153,7 @@ func (c *ContainerClient) LoadImage(
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	loadedRef, err := readImageLoadedRef(ctx, bufio.NewReader(resp.Body))
+	loadedRef, err := readImageLoadedRef(ctx, ref, bufio.NewReader(resp.Body))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read loaded ref: %w", err)
 	}
@@ -206,7 +206,7 @@ func (c *ContainerClient) LoadStreamImage(
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	loadedRef, err := readImageLoadedRef(ctx, bufio.NewReader(resp.Body))
+	loadedRef, err := readImageLoadedRef(ctx, ref, bufio.NewReader(resp.Body))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read loaded ref: %w", err)
 	}
@@ -297,6 +297,7 @@ func (c *ContainerClient) PushManifest(
 
 func readImageLoadedRef(
 	ctx context.Context,
+	ref name.Reference,
 	r *bufio.Reader,
 ) (name.Reference, error) {
 	for {
@@ -326,8 +327,18 @@ func readImageLoadedRef(
 				return nil, fmt.Errorf("failed to decode image load result: %w", err)
 			}
 			slog.DebugContext(ctx, "loaded image", "stream", result.Stream)
+
+			const idPrefix = "Loaded image ID: sha256:"
+			stream := strings.TrimSpace(result.Stream)
+			if strings.HasPrefix(stream, idPrefix) {
+				// nix emits a tagless tarball; docker load returns the digest
+				// only. Reconstruct a taggable ref from the known target ref.
+				return name.ParseReference(
+					ref.Context().String() + "@" + "sha256:" + strings.TrimPrefix(stream, idPrefix),
+				)
+			}
 			loadedRef, err := name.ParseReference(
-				strings.TrimSpace(strings.TrimPrefix(result.Stream, "Loaded image: ")),
+				strings.TrimSpace(strings.TrimPrefix(stream, "Loaded image: ")),
 			)
 			if err != nil {
 				return nil, err
