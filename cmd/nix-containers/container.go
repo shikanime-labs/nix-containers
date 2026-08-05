@@ -300,63 +300,64 @@ func readImageLoadedRef(
 	ref name.Reference,
 	r *bufio.Reader,
 ) (name.Reference, error) {
+	// Docker 28 / containerd v2 emit a tagless ref for nix's image tarball:
+	// an empty "Loaded image: " line and/or a "Loaded image ID: <digest>"
+	// line. Don't depend on the exact shape — extract the sha256 digest
+	// wherever Docker prints it and reconstruct a taggable ref.
+	var digest string
 	for {
 		line, err := r.ReadString('\n')
-		if err != nil {
+		if err != nil && err != io.EOF {
 			return nil, fmt.Errorf("failed to read line: %w", err)
 		}
-		var progress imageLoadProgress
-		if err = json.Unmarshal([]byte(line), &progress); err != nil {
-			if err == io.EOF {
-				break
+		if line != "" {
+			var progress imageLoadProgress
+			if err = json.Unmarshal([]byte(line), &progress); err == nil {
+				if progress.Status == "Loading layer" {
+					slog.DebugContext(
+						ctx,
+						"loading layer",
+						"id",
+						progress.ID,
+						"progress",
+						progress.Progress,
+					)
+				} else {
+					var result imageLoadResult
+					if err = json.Unmarshal([]byte(line), &result); err == nil {
+						slog.DebugContext(ctx, "loaded image", "stream", result.Stream)
+						if d, ok := extractDigest(result.Stream); ok {
+							digest = d
+						}
+					}
+				}
 			}
-			return nil, fmt.Errorf("failed to decode image load progress: %w", err)
 		}
-		if progress.Status == "Loading layer" {
-			slog.DebugContext(
-				ctx,
-				"loading layer",
-				"id",
-				progress.ID,
-				"progress",
-				progress.Progress,
-			)
-		} else {
-			var result imageLoadResult
-			if err = json.Unmarshal([]byte(line), &result); err != nil {
-				return nil, fmt.Errorf("failed to decode image load result: %w", err)
-			}
-			slog.DebugContext(ctx, "loaded image", "stream", result.Stream)
-
-			stream := strings.TrimSpace(result.Stream)
-			// nix emits a tagless tarball: Docker 28 / containerd v2 print
-			// "Loaded image: " with an empty repo and, separately, the digest.
-			// Skip the empty repo line and keep scanning for the digest.
-			if stream == "Loaded image:" {
-				continue
-			}
-			const idPrefix = "Loaded image ID: sha256:"
-			if strings.HasPrefix(stream, idPrefix) {
-				// Reconstruct a taggable ref from the known target ref plus
-				// the digest Docker emitted for the tagless tarball.
-				return name.ParseReference(
-					ref.Context().String() + "@sha256:" + strings.TrimPrefix(stream, idPrefix),
-				)
-			}
-			const bareIDPrefix = "Loaded image ID: "
-			if strings.HasPrefix(stream, bareIDPrefix) {
-				return name.ParseReference(
-					ref.Context().String() + "@sha256:" + strings.TrimSpace(strings.TrimPrefix(stream, bareIDPrefix)),
-				)
-			}
-			loadedRef, err := name.ParseReference(
-				strings.TrimSpace(strings.TrimPrefix(stream, "Loaded image: ")),
-			)
-			if err != nil {
-				return nil, err
-			}
-			return loadedRef, nil
+		if err == io.EOF {
+			break
 		}
 	}
-	return nil, fmt.Errorf("failed to read loaded ref")
+	if digest == "" {
+		return nil, fmt.Errorf("failed to read loaded ref: no digest in docker load output")
+	}
+	return name.ParseReference(ref.Context().String() + "@sha256:" + digest)
+}
+
+// extractDigest returns the sha256 digest from a docker load stream line,
+// accepting "Loaded image ID: sha256:<digest>" as well as a bare
+// "Loaded image ID: <digest>".
+func extractDigest(stream string) (string, bool) {
+	const prefix = "Loaded image ID: "
+	s := strings.TrimSpace(stream)
+	if !strings.HasPrefix(s, prefix) {
+		return "", false
+	}
+	rest := strings.TrimPrefix(s, prefix)
+	rest = strings.TrimSpace(rest)
+	rest = strings.TrimPrefix(rest, "sha256:")
+	rest = strings.TrimSpace(rest)
+	if rest == "" {
+		return "", false
+	}
+	return rest, true
 }

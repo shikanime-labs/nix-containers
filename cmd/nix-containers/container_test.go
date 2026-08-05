@@ -59,26 +59,7 @@ func TestNewContainerClientUsesInjectedDockerClientAndOptions(t *testing.T) {
 	}
 }
 
-func TestReadImageLoadedRefParsesResultAfterProgress(t *testing.T) {
-	ref, err := name.ParseReference("ghcr.io/example/app:latest")
-	if err != nil {
-		t.Fatalf("parse target ref failed: %v", err)
-	}
-	reader := bufio.NewReader(strings.NewReader(
-		"{\"status\":\"Loading layer\",\"progress\":\"1/1\",\"id\":\"sha256:abc\"}\n" +
-			"{\"stream\":\"Loaded image: ghcr.io/example/app:latest\\n\"}\n",
-	))
-
-	got, err := readImageLoadedRef(context.Background(), ref, reader)
-	if err != nil {
-		t.Fatalf("read loaded ref failed: %v", err)
-	}
-	if got := got.Name(); got != "ghcr.io/example/app:latest" {
-		t.Fatalf("expected loaded ref ghcr.io/example/app:latest, got %s", got)
-	}
-}
-
-func TestReadImageLoadedRefSkipsEmptyRepoLineForTaglessTarball(t *testing.T) {
+func TestReadImageLoadedRefExtractsDigestFromTaglessTarball(t *testing.T) {
 	ref, err := name.ParseReference("ghcr.io/example/app:latest")
 	if err != nil {
 		t.Fatalf("parse target ref failed: %v", err)
@@ -99,13 +80,13 @@ func TestReadImageLoadedRefSkipsEmptyRepoLineForTaglessTarball(t *testing.T) {
 	}
 }
 
-func TestReadImageLoadedRefHandlesTaglessImageID(t *testing.T) {
+func TestReadImageLoadedRefHandlesBareDigest(t *testing.T) {
 	ref, err := name.ParseReference("ghcr.io/example/app:latest")
 	if err != nil {
 		t.Fatalf("parse target ref failed: %v", err)
 	}
 	reader := bufio.NewReader(strings.NewReader(
-		"{\"stream\":\"Loaded image ID: sha256:deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef\\n\"}\n",
+		"{\"stream\":\"Loaded image ID: deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef\\n\"}\n",
 	))
 
 	got, err := readImageLoadedRef(context.Background(), ref, reader)
@@ -115,5 +96,19 @@ func TestReadImageLoadedRefHandlesTaglessImageID(t *testing.T) {
 	want := "ghcr.io/example/app@sha256:deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
 	if got := got.Name(); got != want {
 		t.Fatalf("expected loaded ref %s, got %s", want, got)
+	}
+}
+
+func TestReadImageLoadedRefReturnsErrorWithoutDigest(t *testing.T) {
+	ref, err := name.ParseReference("ghcr.io/example/app:latest")
+	if err != nil {
+		t.Fatalf("parse target ref failed: %v", err)
+	}
+	reader := bufio.NewReader(strings.NewReader(
+		"{\"stream\":\"Loaded image: \\n\"}\n",
+	))
+
+	if _, err := readImageLoadedRef(context.Background(), ref, reader); err == nil {
+		t.Fatalf("expected error when no digest is present")
 	}
 }
