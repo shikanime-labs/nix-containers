@@ -328,13 +328,25 @@ func readImageLoadedRef(
 			}
 			slog.DebugContext(ctx, "loaded image", "stream", result.Stream)
 
-			const idPrefix = "Loaded image ID: sha256:"
 			stream := strings.TrimSpace(result.Stream)
+			// nix emits a tagless tarball: Docker 28 / containerd v2 print
+			// "Loaded image: " with an empty repo and, separately, the digest.
+			// Skip the empty repo line and keep scanning for the digest.
+			if stream == "Loaded image:" {
+				continue
+			}
+			const idPrefix = "Loaded image ID: sha256:"
 			if strings.HasPrefix(stream, idPrefix) {
-				// nix emits a tagless tarball; docker load returns the digest
-				// only. Reconstruct a taggable ref from the known target ref.
+				// Reconstruct a taggable ref from the known target ref plus
+				// the digest Docker emitted for the tagless tarball.
 				return name.ParseReference(
-					ref.Context().String() + "@" + "sha256:" + strings.TrimPrefix(stream, idPrefix),
+					ref.Context().String() + "@sha256:" + strings.TrimPrefix(stream, idPrefix),
+				)
+			}
+			const bareIDPrefix = "Loaded image ID: "
+			if strings.HasPrefix(stream, bareIDPrefix) {
+				return name.ParseReference(
+					ref.Context().String() + "@sha256:" + strings.TrimSpace(strings.TrimPrefix(stream, bareIDPrefix)),
 				)
 			}
 			loadedRef, err := name.ParseReference(

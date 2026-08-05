@@ -78,6 +78,27 @@ func TestReadImageLoadedRefParsesResultAfterProgress(t *testing.T) {
 	}
 }
 
+func TestReadImageLoadedRefSkipsEmptyRepoLineForTaglessTarball(t *testing.T) {
+	ref, err := name.ParseReference("ghcr.io/example/app:latest")
+	if err != nil {
+		t.Fatalf("parse target ref failed: %v", err)
+	}
+	reader := bufio.NewReader(strings.NewReader(
+		"{\"status\":\"Loading layer\",\"progress\":\"1/1\",\"id\":\"sha256:abc\"}\n" +
+			"{\"stream\":\"Loaded image: \\n\"}\n" +
+			"{\"stream\":\"Loaded image ID: sha256:deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef\\n\"}\n",
+	))
+
+	got, err := readImageLoadedRef(context.Background(), ref, reader)
+	if err != nil {
+		t.Fatalf("read loaded ref failed: %v", err)
+	}
+	want := "ghcr.io/example/app@sha256:deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+	if got := got.Name(); got != want {
+		t.Fatalf("expected loaded ref %s, got %s", want, got)
+	}
+}
+
 func TestReadImageLoadedRefHandlesTaglessImageID(t *testing.T) {
 	ref, err := name.ParseReference("ghcr.io/example/app:latest")
 	if err != nil {
