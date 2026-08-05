@@ -78,6 +78,27 @@ func TestReadImageLoadedRefParsesResultAfterProgress(t *testing.T) {
 	}
 }
 
+func TestReadImageLoadedRefSkipsEmptyStreamLines(t *testing.T) {
+	ref, err := name.ParseReference("ghcr.io/example/app:latest")
+	if err != nil {
+		t.Fatalf("parse target ref failed: %v", err)
+	}
+	reader := bufio.NewReader(strings.NewReader(
+		"{\"status\":\"Loading layer\",\"progress\":\"1/1\",\"id\":\"sha256:abc\"}\n" +
+			"{\"progressDetail\":{}}\n" +
+			"{\"stream\":\"\"}\n" +
+			"{\"stream\":\"Loaded image: ghcr.io/example/app:latest\\n\"}\n",
+	))
+
+	got, err := readImageLoadedRef(context.Background(), ref, reader)
+	if err != nil {
+		t.Fatalf("read loaded ref failed: %v", err)
+	}
+	if got := got.Name(); got != "ghcr.io/example/app:latest" {
+		t.Fatalf("expected loaded ref ghcr.io/example/app:latest, got %s", got)
+	}
+}
+
 func TestReadImageLoadedRefHandlesTaglessImageID(t *testing.T) {
 	ref, err := name.ParseReference("ghcr.io/example/app:latest")
 	if err != nil {

@@ -330,6 +330,10 @@ func readImageLoadedRef(
 
 			const idPrefix = "Loaded image ID: sha256:"
 			stream := strings.TrimSpace(result.Stream)
+			if stream == "" {
+				// non-stream progress/aux lines carry no ref
+				continue
+			}
 			if strings.HasPrefix(stream, idPrefix) {
 				// nix emits a tagless tarball; docker load returns the digest
 				// only. Reconstruct a taggable ref from the known target ref.
