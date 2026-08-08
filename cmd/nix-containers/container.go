@@ -303,6 +303,9 @@ func readImageLoadedRef(
 	for {
 		line, err := r.ReadString('\n')
 		if err != nil {
+			if err == io.EOF {
+				break
+			}
 			return nil, fmt.Errorf("failed to read line: %w", err)
 		}
 		var progress imageLoadProgress
@@ -312,7 +315,7 @@ func readImageLoadedRef(
 			}
 			return nil, fmt.Errorf("failed to decode image load progress: %w", err)
 		}
-		if progress.Status == "Loading layer" {
+		if progress.Status != "" {
 			slog.DebugContext(
 				ctx,
 				"loading layer",
@@ -321,30 +324,31 @@ func readImageLoadedRef(
 				"progress",
 				progress.Progress,
 			)
-		} else {
-			var result imageLoadResult
-			if err = json.Unmarshal([]byte(line), &result); err != nil {
-				return nil, fmt.Errorf("failed to decode image load result: %w", err)
-			}
-			slog.DebugContext(ctx, "loaded image", "stream", result.Stream)
+			continue
+		}
 
-			const idPrefix = "Loaded image ID: sha256:"
-			stream := strings.TrimSpace(result.Stream)
-			if strings.HasPrefix(stream, idPrefix) {
-				// nix emits a tagless tarball; docker load returns the digest
-				// only. Reconstruct a taggable ref from the known target ref.
-				return name.ParseReference(
-					ref.Context().String() + "@" + "sha256:" + strings.TrimPrefix(stream, idPrefix),
-				)
-			}
-			loadedRef, err := name.ParseReference(
-				strings.TrimSpace(strings.TrimPrefix(stream, "Loaded image: ")),
-			)
+		var result imageLoadResult
+		if err = json.Unmarshal([]byte(line), &result); err != nil {
+			return nil, fmt.Errorf("failed to decode image load result: %w", err)
+		}
+		slog.DebugContext(ctx, "loaded image", "stream", result.Stream)
+
+		stream := strings.TrimSpace(result.Stream)
+		const idPrefix = "Loaded image ID: sha256:"
+		if strings.HasPrefix(stream, idPrefix) {
+			// nix emits a tagless tarball; docker load returns the digest
+			// only. Reconstruct a taggable ref from the known target ref.
+			return name.ParseReference(ref.Context().String() + "@sha256:" + strings.TrimPrefix(stream, idPrefix))
+		}
+		const imgPrefix = "Loaded image: "
+		if strings.HasPrefix(stream, imgPrefix) {
+			loadedRef, err := name.ParseReference(strings.TrimSpace(strings.TrimPrefix(stream, imgPrefix)))
 			if err != nil {
 				return nil, err
 			}
 			return loadedRef, nil
 		}
+		// Non-ref stream line; keep reading.
 	}
 	return nil, fmt.Errorf("failed to read loaded ref")
 }

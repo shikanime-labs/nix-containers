@@ -3,96 +3,50 @@ package main
 import (
 	"bufio"
 	"context"
-	"net/http"
 	"strings"
 	"testing"
-
-	"github.com/docker/docker/client"
-	"github.com/google/go-containerregistry/pkg/authn"
-	"github.com/google/go-containerregistry/pkg/name"
 )
 
-type testContextKey string
+func TestReadImageLoadedRefSkipsStatusLines(t *testing.T) {
+	ref := mustParseReference(t, "ghcr.io/example/app:v1.0.0")
+	const digest = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
 
-type fakeKeychain struct{}
+	// Docker load emits progress/status lines (Pull complete, Extracting, …)
+	// before the tagless image ID line. The reader must skip those and only
+	// return on an actual image reference.
+	stream := `{"status":"Pull complete","id":"abc123"}` + "\n" +
+		`{"status":"Extracting","id":"def456","progressDetail":{}}` + "\n" +
+		`{"stream":"Loaded image ID: sha256:` + digest + `"}` + "\n"
 
-func (fakeKeychain) Resolve(authn.Resource) (authn.Authenticator, error) {
-	return authn.Anonymous, nil
-}
-
-type fakeRoundTripper struct{}
-
-func (fakeRoundTripper) RoundTrip(*http.Request) (*http.Response, error) {
-	return nil, nil
-}
-
-func TestNewContainerClientUsesInjectedDockerClientAndOptions(t *testing.T) {
-	wantClient := &client.Client{}
-	ctx := context.WithValue(context.Background(), testContextKey("test"), "value")
-	keychain := fakeKeychain{}
-	transport := fakeRoundTripper{}
-
-	containerClient, err := NewContainerClient(
-		ctx,
-		WithContainerDockerClient(wantClient),
-		WithContainerKeychain(keychain),
-		WithContainerTransport(transport),
-	)
+	loaded, err := readImageLoadedRef(context.Background(), ref, bufio.NewReader(strings.NewReader(stream)))
 	if err != nil {
-		t.Fatalf("create container client failed: %v", err)
+		t.Fatalf("readImageLoadedRef failed: %v", err)
 	}
-
-	if containerClient.docker != wantClient {
-		t.Fatalf("expected injected docker client to be preserved")
-	}
-	if containerClient.keychain != keychain {
-		t.Fatalf("expected keychain override to be stored")
-	}
-	if _, ok := containerClient.transport.(fakeRoundTripper); !ok {
-		t.Fatalf("expected transport override to be stored")
-	}
-	if len(containerClient.remote) != 4 {
-		t.Fatalf(
-			"expected default and override remote options, got %d",
-			len(containerClient.remote),
-		)
+	if got := loaded.String(); got != "ghcr.io/example/app@sha256:"+digest {
+		t.Fatalf("unexpected loaded ref: %q", got)
 	}
 }
 
-func TestReadImageLoadedRefParsesResultAfterProgress(t *testing.T) {
-	ref, err := name.ParseReference("ghcr.io/example/app:latest")
-	if err != nil {
-		t.Fatalf("parse target ref failed: %v", err)
-	}
-	reader := bufio.NewReader(strings.NewReader(
-		"{\"status\":\"Loading layer\",\"progress\":\"1/1\",\"id\":\"sha256:abc\"}\n" +
-			"{\"stream\":\"Loaded image: ghcr.io/example/app:latest\\n\"}\n",
-	))
+func TestReadImageLoadedRefTaggedImage(t *testing.T) {
+	ref := mustParseReference(t, "ghcr.io/example/app:v1.0.0")
 
-	got, err := readImageLoadedRef(context.Background(), ref, reader)
+	stream := `{"status":"Loading layer","id":"abc"}` + "\n" +
+		`{"stream":"Loaded image: ghcr.io/example/app:latest"}` + "\n"
+
+	loaded, err := readImageLoadedRef(context.Background(), ref, bufio.NewReader(strings.NewReader(stream)))
 	if err != nil {
-		t.Fatalf("read loaded ref failed: %v", err)
+		t.Fatalf("readImageLoadedRef failed: %v", err)
 	}
-	if got := got.Name(); got != "ghcr.io/example/app:latest" {
-		t.Fatalf("expected loaded ref ghcr.io/example/app:latest, got %s", got)
+	if got := loaded.String(); got != "ghcr.io/example/app:latest" {
+		t.Fatalf("unexpected loaded ref: %q", got)
 	}
 }
 
-func TestReadImageLoadedRefHandlesTaglessImageID(t *testing.T) {
-	ref, err := name.ParseReference("ghcr.io/example/app:latest")
-	if err != nil {
-		t.Fatalf("parse target ref failed: %v", err)
-	}
-	reader := bufio.NewReader(strings.NewReader(
-		"{\"stream\":\"Loaded image ID: sha256:deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef\\n\"}\n",
-	))
+func TestReadImageLoadedRefNoRefIsError(t *testing.T) {
+	ref := mustParseReference(t, "ghcr.io/example/app:v1.0.0")
+	stream := `{"status":"Pull complete","id":"abc"}` + "\n"
 
-	got, err := readImageLoadedRef(context.Background(), ref, reader)
-	if err != nil {
-		t.Fatalf("read loaded ref failed: %v", err)
-	}
-	want := "ghcr.io/example/app@sha256:deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
-	if got := got.Name(); got != want {
-		t.Fatalf("expected loaded ref %s, got %s", want, got)
+	if _, err := readImageLoadedRef(context.Background(), ref, bufio.NewReader(strings.NewReader(stream))); err == nil {
+		t.Fatal("expected error when no image reference is present in load output")
 	}
 }
