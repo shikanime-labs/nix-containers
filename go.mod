@@ -7,7 +7,7 @@ require (
 	github.com/google/go-containerregistry v0.20.6
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
-	golang.org/x/sync v0.18.0
+	golang.org/x/sync v0.22.0
 )
 
 require (
