@@ -45,6 +45,7 @@ type ContainerClient struct {
 
 type imageLoadProgress struct {
 	Status         string         `json:"status"`
+	Stream         string         `json:"stream"`
 	Progress       string         `json:"progress"`
 	ID             string         `json:"id"`
 	ProgressDetail map[string]any `json:"progressDetail"`
@@ -315,7 +316,9 @@ func readImageLoadedRef(
 			}
 			return nil, fmt.Errorf("failed to decode image load progress: %w", err)
 		}
-		if progress.Status != "" {
+		// A line with both status and stream is a real progress line
+		// (e.g. docker 28.0.x), not a loaded-ref summary. Skip only those.
+		if progress.Status != "" && progress.Stream == "" {
 			slog.DebugContext(
 				ctx,
 				"loading layer",
@@ -354,5 +357,8 @@ func readImageLoadedRef(
 		}
 		// Non-ref stream line; keep reading.
 	}
-	return nil, fmt.Errorf("failed to read loaded ref")
+	// Loaded without an explicit ref summary (e.g. docker reported the image
+	// was already present / loaded silently). Fall back to the requested ref.
+	slog.DebugContext(ctx, "no loaded-ref line in load output; using requested ref", "ref", ref.Name())
+	return ref, nil
 }

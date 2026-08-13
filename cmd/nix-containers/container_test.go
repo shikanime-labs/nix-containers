@@ -50,15 +50,44 @@ func TestReadImageLoadedRefTaggedImage(t *testing.T) {
 	}
 }
 
-func TestReadImageLoadedRefNoRefIsError(t *testing.T) {
+func TestReadImageLoadedRefNoRefFallsBackToTarget(t *testing.T) {
 	ref := mustParseReference(t, "ghcr.io/example/app:v1.0.0")
+	// docker reported only progress lines and no loaded-ref summary
+	// (image already present / loaded silently). Must fall back to the
+	// requested ref instead of erroring.
 	stream := `{"status":"Pull complete","id":"abc"}` + "\n"
 
-	if _, err := readImageLoadedRef(
+	loaded, err := readImageLoadedRef(
 		context.Background(),
 		ref,
 		bufio.NewReader(strings.NewReader(stream)),
-	); err == nil {
-		t.Fatal("expected error when no image reference is present in load output")
+	)
+	if err != nil {
+		t.Fatalf("readImageLoadedRef failed: %v", err)
+	}
+	if got := loaded.String(); got != "ghcr.io/example/app:v1.0.0" {
+		t.Fatalf("unexpected loaded ref: %q", got)
+	}
+}
+
+func TestReadImageLoadedRefStatusAndStreamLineIsNotProgress(t *testing.T) {
+	ref := mustParseReference(t, "ghcr.io/example/app:v1.0.0")
+	const digest = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+
+	// docker 28.0.x may emit a loaded-ref summary line that also carries a
+	// status field. It must still be treated as the ref, not skipped.
+	stream := `{"status":"Loading layer","id":"abc"}` + "\n" +
+		`{"status":"Loaded image ID: sha256:` + digest + `","stream":"Loaded image ID: sha256:` + digest + `"}` + "\n"
+
+	loaded, err := readImageLoadedRef(
+		context.Background(),
+		ref,
+		bufio.NewReader(strings.NewReader(stream)),
+	)
+	if err != nil {
+		t.Fatalf("readImageLoadedRef failed: %v", err)
+	}
+	if got := loaded.String(); got != "ghcr.io/example/app@sha256:"+digest {
+		t.Fatalf("unexpected loaded ref: %q", got)
 	}
 }
