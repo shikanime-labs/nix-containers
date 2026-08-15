@@ -13,7 +13,6 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/name"
@@ -126,10 +125,6 @@ func (c *ContainerClient) TagImage(
 ) error {
 	if err := c.docker.ImageTag(ctx, loadedRef.Name(), ref.Name()); err != nil {
 		return fmt.Errorf("tag image failed: %w", err)
-	}
-	_, err := c.docker.ImageRemove(ctx, loadedRef.Name(), image.RemoveOptions{})
-	if err != nil {
-		return fmt.Errorf("remove image failed: %w", err)
 	}
 	return nil
 }
