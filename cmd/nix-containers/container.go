@@ -65,13 +65,13 @@ func makeContainerOptions(opts ...ContainerOption) *containerOptions {
 	return o
 }
 
-func NewContainerClient(_ context.Context, opts ...ContainerOption) (*ContainerClient, error) {
+func NewContainerClient(_ context.Context, opts ...ContainerOption) *ContainerClient {
 	o := makeContainerOptions(opts...)
 	return &ContainerClient{
 		keychain:  o.keychain,
 		transport: o.transport,
 		remote:    o.remote,
-	}, nil
+	}
 }
 
 func (c *ContainerClient) CheckPushPermission(ref name.Reference) error {
