@@ -27,6 +27,12 @@ var (
 			if debug {
 				slog.SetLogLoggerLevel(slog.LevelDebug)
 			}
+			shutdown := setupTracing(ctx)
+			defer func() {
+				if err := shutdown(ctx); err != nil {
+					slog.WarnContext(ctx, "tracing shutdown failed", "err", err)
+				}
+			}()
 			buildContext := getBuildContext()
 			ref, err := getImageTag()
 			if err != nil {
@@ -56,7 +62,10 @@ var (
 			if noPureEvalFlake {
 				opts = append(opts, WithStreamImageOption(WithNoPureEval()))
 			}
-			container := NewContainerClient(ctx)
+			container, err := NewContainerClient(ctx)
+			if err != nil {
+				return fmt.Errorf("failed to create container client: %w", err)
+			}
 			builder := NewBuilder(NewNixClient(), container, opts...)
 			return builder.BuildAndPush(ctx, buildContext, ref, plats)
 		},

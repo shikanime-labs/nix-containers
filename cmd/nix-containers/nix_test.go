@@ -144,7 +144,7 @@ func TestNixClientGetImageBuilderTypeParsesStreamArtifact(t *testing.T) {
 		0,
 	)
 
-	ref := mustParseReference(t)
+	ref := mustParseReference(t, "ghcr.io/example/app:latest")
 	builderType, err := NewNixClient().GetImageBuilderType(
 		context.Background(),
 		"/workspace",
