@@ -9,6 +9,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
+	"go.opentelemetry.io/otel/attribute"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -20,6 +21,13 @@ type buildOption struct {
 }
 
 type nixBuilderClient interface {
+	GetImageBuilderType(
+		context.Context,
+		string,
+		name.Reference,
+		*v1.Platform,
+		...imageOption,
+	) (BuilderType, error)
 	BuildPlatformImage(
 		context.Context,
 		string,
@@ -31,6 +39,9 @@ type nixBuilderClient interface {
 
 type containerBuilderClient interface {
 	CheckPushPermission(name.Reference) error
+	TagImage(context.Context, name.Reference, name.Reference) error
+	LoadImage(context.Context, name.Reference, string) (name.Reference, error)
+	LoadStreamImage(context.Context, name.Reference, string) (name.Reference, error)
 	PushImage(name.Reference, string) error
 	PushPlatformImage(name.Reference, *v1.Platform, string) (mutate.IndexAddendum, error)
 	PushManifest(name.Reference, []mutate.IndexAddendum) error
@@ -79,36 +90,105 @@ func (b *Builder) BuildAndPush(
 	ref name.Reference,
 	plats []*v1.Platform,
 ) error {
+	ctx, span := startSpan(ctx, "nix.build",
+		attribute.String("ref", ref.Name()),
+		attribute.Int("platform_count", len(plats)),
+		attribute.Bool("push", b.push),
+	)
+	defer span.End()
 	if len(plats) == 0 {
 		return fmt.Errorf("at least one platform is required")
 	}
 	if b.push {
 		slog.InfoContext(ctx, "checking push permission", "ref", ref.Name())
+		// CheckPushPermission is used to fail fast if the user doesn't have credentials
+		// to push to the registry. This prevents running the expensive build process
+		// only to fail at the end.
+		// See: https://github.com/google/go-containerregistry/issues/412
 		if err := b.container.CheckPushPermission(ref); err != nil {
 			return err
 		}
 	}
 	if len(plats) == 1 {
+		slog.DebugContext(ctx, "build image", "ref", ref.Name(), "plat", plats[0])
 		return b.buildAndPushImage(ctx, buildContext, ref, plats[0])
 	}
+	slog.DebugContext(ctx, "build image", "ref", ref.Name(), "plats", plats)
 	return b.buildAndPushMultiplatformImage(ctx, buildContext, ref, plats)
 }
 
-// buildPlatformPath runs the nix build for one platform and returns the
-// local tarball path. The tarball is pushed directly (no docker load/tag) —
-// the daemon round-trip was redundant and broke on docker 28.
-func (b *Builder) buildPlatformPath(
+func (b *Builder) buildPlatformImage(
 	ctx context.Context,
 	buildContext string,
-	ref name.Reference,
 	p *v1.Platform,
-) (string, error) {
+	ref name.Reference,
+) (name.Reference, string, error) {
 	slog.InfoContext(ctx, "build image", "ref", ref.Name(), "os", p.OS, "arch", p.Architecture)
-	path, err := b.nix.BuildPlatformImage(ctx, buildContext, ref, p, b.imageOpts...)
+
+	bctx, bspan := startSpan(ctx, "nix.build.image",
+		attribute.String("ref", ref.Name()),
+		attribute.String("os", p.OS),
+		attribute.String("arch", p.Architecture),
+	)
+	path, err := b.nix.BuildPlatformImage(
+		bctx,
+		buildContext,
+		ref,
+		p,
+		b.imageOpts...,
+	)
+	bspan.End()
 	if err != nil {
-		return "", fmt.Errorf("build image failed: %w", err)
+		return nil, "", fmt.Errorf("build image failed: %w", err)
 	}
-	return path, nil
+
+	builderType, err := b.nix.GetImageBuilderType(ctx, buildContext, ref, p, b.imageOpts...)
+	if err != nil {
+		return nil, "", fmt.Errorf("check image builder type failed: %w", err)
+	}
+	slog.InfoContext(
+		ctx,
+		"image builder type resolved",
+		"ref",
+		ref.Name(),
+		"platform",
+		formatSystemName(p),
+		"builder_type",
+		builderType,
+		"path",
+		path,
+	)
+
+	if builderType == StreamBuilderType {
+		slog.InfoContext(
+			ctx,
+			"load stream image",
+			"ref",
+			ref.Name(),
+			"platform",
+			formatSystemName(p),
+			"path",
+			path,
+		)
+		loadedRef, err := b.container.LoadStreamImage(ctx, ref, path)
+		return loadedRef, path, err
+	}
+	if builderType == TarGzBuilderType {
+		slog.InfoContext(
+			ctx,
+			"load archive image",
+			"ref",
+			ref.Name(),
+			"platform",
+			formatSystemName(p),
+			"path",
+			path,
+		)
+		loadedRef, err := b.container.LoadImage(ctx, ref, path)
+		return loadedRef, path, err
+	}
+
+	return nil, "", fmt.Errorf("unknown builder type: %d", builderType)
 }
 
 func (b *Builder) buildAndPushMultiplatformImage(
@@ -129,22 +209,95 @@ func (b *Builder) buildAndPushMultiplatformImage(
 	for _, p := range ps {
 		p := p
 		wg.Go(func() error {
-			path, err := b.buildPlatformPath(ctx, buildContext, ref, p)
+			pctx, pspan := startSpan(ctx, "nix.build.platform",
+				attribute.String("ref", ref.Name()),
+				attribute.String("platform", formatSystemName(p)),
+			)
+			defer pspan.End()
+			slog.InfoContext(
+				ctx,
+				"platform pipeline started",
+				"ref",
+				ref.Name(),
+				"platform",
+				formatSystemName(p),
+			)
+			loadedRef, path, err := b.buildPlatformImage(pctx, buildContext, p, ref)
 			if err != nil {
 				return err
 			}
+			slog.InfoContext(
+				ctx,
+				"platform image loaded",
+				"ref",
+				ref.Name(),
+				"platform",
+				formatSystemName(p),
+				"loaded_ref",
+				loadedRef.Name(),
+			)
 			platformTag, err := formatPlatformReference(ref, p)
 			if err != nil {
 				return fmt.Errorf("format platform reference failed: %w", err)
 			}
-			slog.InfoContext(ctx, "push platform image", "ref", ref.Name(), "platform_ref", platformTag.Name())
+			slog.InfoContext(
+				ctx,
+				"tag platform image",
+				"ref",
+				ref.Name(),
+				"platform",
+				formatSystemName(p),
+				"platform_ref",
+				platformTag.Name(),
+			)
+			if err = b.container.TagImage(ctx, loadedRef, platformTag); err != nil {
+				return fmt.Errorf("tag image failed: %w", err)
+			}
+			slog.InfoContext(
+				ctx,
+				"platform image tagged",
+				"ref",
+				ref.Name(),
+				"platform",
+				formatSystemName(p),
+				"platform_ref",
+				platformTag.Name(),
+			)
+			slog.InfoContext(
+				ctx,
+				"push platform image",
+				"ref",
+				ref.Name(),
+				"platform",
+				formatSystemName(p),
+				"platform_ref",
+				platformTag.Name(),
+			)
 			add, err := b.container.PushPlatformImage(platformTag, p, path)
 			if err != nil {
 				return err
 			}
+			slog.InfoContext(
+				ctx,
+				"platform image pushed",
+				"ref",
+				ref.Name(),
+				"platform",
+				formatSystemName(p),
+				"platform_ref",
+				platformTag.Name(),
+			)
 			addsMu.Lock()
 			adds = append(adds, add)
 			addsMu.Unlock()
+			slog.InfoContext(
+				ctx,
+				"platform pipeline completed",
+				"ref",
+				ref.Name(),
+				"platform",
+				formatSystemName(p),
+			)
 			return nil
 		})
 	}
@@ -165,9 +318,15 @@ func (b *Builder) buildAndPushImage(
 	ref name.Reference,
 	p *v1.Platform,
 ) error {
-	path, err := b.buildPlatformPath(ctx, buildContext, ref, p)
+	loadedRef, path, err := b.buildPlatformImage(ctx, buildContext, p, ref)
 	if err != nil {
 		return fmt.Errorf("build flake image failed: %w", err)
+	}
+	if loadedRef != ref {
+		slog.DebugContext(ctx, "tag image", "ref", ref.Name(), "loadedRef", loadedRef.Name())
+		if err = b.container.TagImage(ctx, loadedRef, ref); err != nil {
+			return fmt.Errorf("tag image failed: %w", err)
+		}
 	}
 	if b.push {
 		slog.DebugContext(ctx, "push image", "ref", ref.Name())
