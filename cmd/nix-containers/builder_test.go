@@ -54,19 +54,15 @@ func TestBuilderBuildAndPushReturnsPermissionErrorBeforeBuild(t *testing.T) {
 
 func TestBuilderBuildAndPushSinglePlatformStreamFlow(t *testing.T) {
 	ref := mustParseReference(t, "ghcr.io/example/app:latest")
-	loadedRef := mustParseReference(t, "ghcr.io/example/app:loaded")
 	plat := &v1.Platform{OS: "linux", Architecture: "amd64"}
 	nixClient := &mockNixBuilderClient{
 		BuildPlatformImageFunc: func(context.Context, string, name.Reference, *v1.Platform, ...imageOption) (string, error) {
 			return "/tmp/result", nil
 		},
-		GetImageBuilderTypeFunc: func(context.Context, string, name.Reference, *v1.Platform, ...imageOption) (BuilderType, error) {
-			return StreamBuilderType, nil
-		},
 	}
 	containerClient := &mockContainerBuilderClient{
-		LoadStreamImageFunc: func(context.Context, name.Reference, string) (name.Reference, error) {
-			return loadedRef, nil
+		PushImageFunc: func(name.Reference, string) error {
+			return nil
 		},
 	}
 
@@ -86,35 +82,11 @@ func TestBuilderBuildAndPushSinglePlatformStreamFlow(t *testing.T) {
 	}
 
 	buildCalls := nixClient.BuildPlatformImageCalls()
-	typeCalls := nixClient.GetImageBuilderTypeCalls()
-	if len(buildCalls) != 1 || len(typeCalls) != 1 {
-		t.Fatalf(
-			"expected one nix build/type check, got build=%d type=%d",
-			len(buildCalls),
-			len(typeCalls),
-		)
+	if len(buildCalls) != 1 {
+		t.Fatalf("expected one nix build, got %d", len(buildCalls))
 	}
-	if len(buildCalls[0].ImageOptionMoqParams) != 1 || len(typeCalls[0].ImageOptionMoqParams) != 1 {
+	if len(buildCalls[0].ImageOptionMoqParams) != 1 {
 		t.Fatalf("expected image options to flow through builder")
-	}
-	loadStreamCalls := containerClient.LoadStreamImageCalls()
-	if len(loadStreamCalls) != 1 || loadStreamCalls[0].S != "/tmp/result" {
-		t.Fatalf(
-			"expected stream load from /tmp/result, got calls=%d path=%q",
-			len(loadStreamCalls),
-			loadStreamCalls[0].S,
-		)
-	}
-	if len(containerClient.LoadImageCalls()) != 0 {
-		t.Fatalf(
-			"expected archive loader to be unused, got %d calls",
-			len(containerClient.LoadImageCalls()),
-		)
-	}
-	tagCalls := containerClient.TagImageCalls()
-	if len(tagCalls) != 1 || tagCalls[0].Reference1.Name() != loadedRef.Name() ||
-		tagCalls[0].Reference2.Name() != ref.Name() {
-		t.Fatalf("expected image tag from %s to %s", loadedRef.Name(), ref.Name())
 	}
 	pushImageCalls := containerClient.PushImageCalls()
 	if len(pushImageCalls) != 1 || pushImageCalls[0].Reference.Name() != ref.Name() {
@@ -160,7 +132,6 @@ func TestBuilderBuildAndPushRejectsEmptyPlatforms(t *testing.T) {
 
 func TestBuilderBuildAndPushMultiplatformTracksImage(t *testing.T) {
 	ref := mustParseReference(t, "ghcr.io/example/app:latest")
-	loadedRef := mustParseReference(t, "ghcr.io/example/app:loaded")
 	plats := []*v1.Platform{
 		{OS: "linux", Architecture: "amd64"},
 		{OS: "linux", Architecture: "arm64"},
@@ -169,14 +140,8 @@ func TestBuilderBuildAndPushMultiplatformTracksImage(t *testing.T) {
 		BuildPlatformImageFunc: func(context.Context, string, name.Reference, *v1.Platform, ...imageOption) (string, error) {
 			return "/tmp/result", nil
 		},
-		GetImageBuilderTypeFunc: func(context.Context, string, name.Reference, *v1.Platform, ...imageOption) (BuilderType, error) {
-			return TarGzBuilderType, nil
-		},
 	}
 	containerClient := &mockContainerBuilderClient{
-		LoadImageFunc: func(context.Context, name.Reference, string) (name.Reference, error) {
-			return loadedRef, nil
-		},
 		PushPlatformImageFunc: func(name.Reference, *v1.Platform, string) (mutate.IndexAddendum, error) {
 			return mutate.IndexAddendum{}, nil
 		},
@@ -187,16 +152,11 @@ func TestBuilderBuildAndPushMultiplatformTracksImage(t *testing.T) {
 		t.Fatalf("multiplatform build and push failed: %v", err)
 	}
 
-	if len(nixClient.BuildPlatformImageCalls()) != 2 ||
-		len(nixClient.GetImageBuilderTypeCalls()) != 2 {
+	if len(nixClient.BuildPlatformImageCalls()) != 2 {
 		t.Fatalf(
-			"expected one nix build/type per platform, got build=%d type=%d",
+			"expected one nix build per platform, got %d",
 			len(nixClient.BuildPlatformImageCalls()),
-			len(nixClient.GetImageBuilderTypeCalls()),
 		)
-	}
-	if len(containerClient.LoadImageCalls()) != 2 {
-		t.Fatalf("expected two archive loads, got %d", len(containerClient.LoadImageCalls()))
 	}
 	if len(containerClient.PushPlatformImageCalls()) != 2 {
 		t.Fatalf(
