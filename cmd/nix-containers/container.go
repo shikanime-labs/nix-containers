@@ -354,6 +354,11 @@ func readImageLoadedRef(
 	}
 	// Loaded without an explicit ref summary (e.g. docker reported the image
 	// was already present / loaded silently). Fall back to the requested ref.
-	slog.DebugContext(ctx, "no loaded-ref line in load output; using requested ref", "ref", ref.Name())
+	slog.DebugContext(
+		ctx,
+		"no loaded-ref line in load output; using requested ref",
+		"ref",
+		ref.Name(),
+	)
 	return ref, nil
 }

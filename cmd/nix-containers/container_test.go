@@ -120,7 +120,11 @@ func TestTagImageTwoPlatforms(t *testing.T) {
 	pullResp.Close()
 
 	t.Cleanup(func() {
-		c.docker.ImageRemove(ctx, "busybox:RegressionTestTagImageTwoPlatforms", image.RemoveOptions{Force: true})
+		c.docker.ImageRemove(
+			ctx,
+			"busybox:RegressionTestTagImageTwoPlatforms",
+			image.RemoveOptions{Force: true},
+		)
 	})
 
 	tagRefA := mustParseReference(t, "busybox:RegressionTestTagImageTwoPlatforms-platform-a")
