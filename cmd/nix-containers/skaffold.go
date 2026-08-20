@@ -56,10 +56,7 @@ var (
 			if noPureEvalFlake {
 				opts = append(opts, WithStreamImageOption(WithNoPureEval()))
 			}
-			container, err := NewContainerClient(ctx)
-			if err != nil {
-				return fmt.Errorf("failed to create container client: %w", err)
-			}
+			container := NewContainerClient(ctx)
 			builder := NewBuilder(NewNixClient(), container, opts...)
 			return builder.BuildAndPush(ctx, buildContext, ref, plats)
 		},
