@@ -1,9 +1,12 @@
 {
+  description = "Build OCI images from Nix flakes";
+
   inputs = {
     automata = {
       url = "github:shikanime-studio/automata";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
     devenv = {
       url = "github:cachix/devenv";
       inputs = {
@@ -12,6 +15,7 @@
         nixpkgs.follows = "nixpkgs";
       };
     };
+
     devlib = {
       url = "github:shikanime-studio/devlib";
       inputs = {
@@ -22,15 +26,19 @@
         treefmt-nix.follows = "treefmt-nix";
       };
     };
+
     flake-parts = {
       url = "github:hercules-ci/flake-parts";
       inputs.nixpkgs-lib.follows = "nixpkgs";
     };
+
     git-hooks = {
       url = "github:cachix/git-hooks.nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
     nixpkgs.url = "github:nixos/nixpkgs/nixpkgs-unstable";
+
     treefmt-nix = {
       url = "github:numtide/treefmt-nix";
       inputs.nixpkgs.follows = "nixpkgs";
