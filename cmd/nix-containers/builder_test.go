@@ -13,10 +13,10 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
 )
 
-func mustParseReference(t *testing.T, raw string) name.Reference {
+func mustParseReference(t *testing.T) name.Reference {
 	t.Helper()
 
-	ref, err := name.ParseReference(raw)
+	ref, err := name.ParseReference("ghcr.io/example/app:latest")
 	if err != nil {
 		t.Fatalf("parse reference failed: %v", err)
 	}
@@ -24,7 +24,7 @@ func mustParseReference(t *testing.T, raw string) name.Reference {
 }
 
 func TestBuilderBuildAndPushReturnsPermissionErrorBeforeBuild(t *testing.T) {
-	ref := mustParseReference(t, "ghcr.io/example/app:latest")
+	ref := mustParseReference(t)
 	plat := &v1.Platform{OS: "linux", Architecture: "amd64"}
 	nixClient := &mockNixBuilderClient{}
 	containerClient := &mockContainerBuilderClient{
@@ -53,7 +53,7 @@ func TestBuilderBuildAndPushReturnsPermissionErrorBeforeBuild(t *testing.T) {
 }
 
 func TestBuilderBuildAndPushSinglePlatformStreamFlow(t *testing.T) {
-	ref := mustParseReference(t, "ghcr.io/example/app:latest")
+	ref := mustParseReference(t)
 	plat := &v1.Platform{OS: "linux", Architecture: "amd64"}
 	nixClient := &mockNixBuilderClient{
 		BuildPlatformImageFunc: func(context.Context, string, name.Reference, *v1.Platform, ...imageOption) (string, error) {
@@ -100,7 +100,7 @@ func TestBuilderBuildAndPushSinglePlatformStreamFlow(t *testing.T) {
 }
 
 func TestBuilderBuildAndPushMultiplatformRequiresPush(t *testing.T) {
-	ref := mustParseReference(t, "ghcr.io/example/app:latest")
+	ref := mustParseReference(t)
 	plats := []*v1.Platform{
 		{OS: "linux", Architecture: "amd64"},
 		{OS: "linux", Architecture: "arm64"},
@@ -114,7 +114,7 @@ func TestBuilderBuildAndPushMultiplatformRequiresPush(t *testing.T) {
 }
 
 func TestBuilderBuildAndPushRejectsEmptyPlatforms(t *testing.T) {
-	ref := mustParseReference(t, "ghcr.io/example/app:latest")
+	ref := mustParseReference(t)
 	containerClient := &mockContainerBuilderClient{}
 
 	builder := NewBuilder(&mockNixBuilderClient{}, containerClient, WithPush(true))
@@ -131,7 +131,7 @@ func TestBuilderBuildAndPushRejectsEmptyPlatforms(t *testing.T) {
 }
 
 func TestBuilderBuildAndPushMultiplatformTracksImage(t *testing.T) {
-	ref := mustParseReference(t, "ghcr.io/example/app:latest")
+	ref := mustParseReference(t)
 	plats := []*v1.Platform{
 		{OS: "linux", Architecture: "amd64"},
 		{OS: "linux", Architecture: "arm64"},

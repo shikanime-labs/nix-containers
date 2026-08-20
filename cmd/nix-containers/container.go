@@ -65,7 +65,7 @@ func makeContainerOptions(opts ...ContainerOption) *containerOptions {
 	return o
 }
 
-func NewContainerClient(ctx context.Context, opts ...ContainerOption) (*ContainerClient, error) {
+func NewContainerClient(_ context.Context, opts ...ContainerOption) (*ContainerClient, error) {
 	o := makeContainerOptions(opts...)
 	return &ContainerClient{
 		keychain:  o.keychain,
