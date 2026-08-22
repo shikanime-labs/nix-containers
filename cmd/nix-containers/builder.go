@@ -204,7 +204,18 @@ func (b *Builder) buildAndPushMultiplatformImage(
 				"platform",
 				formatSystemName(p),
 			)
-			loadedRef, path, err := b.buildPlatformImage(ctx, buildContext, p, ref)
+			// Compute the unique per-platform ref first so each platform is
+			// loaded into the docker daemon under its own tag instead of the
+			// shared `ref`. Previously every platform loaded under `ref` and
+			// TagImage's `ImageTag`+`ImageRemove(ref)` deleted the shared image
+			// before the next platform could tag/push it -> "No such image".
+			// Loading under the unique platformTag removes the collision (and the
+			// race) entirely.
+			platformTag, err := formatPlatformReference(ref, p)
+			if err != nil {
+				return fmt.Errorf("format platform reference failed: %w", err)
+			}
+			loadedRef, path, err := b.buildPlatformImage(ctx, buildContext, p, platformTag)
 			if err != nil {
 				return err
 			}
@@ -218,10 +229,6 @@ func (b *Builder) buildAndPushMultiplatformImage(
 				"loaded_ref",
 				loadedRef.Name(),
 			)
-			platformTag, err := formatPlatformReference(ref, p)
-			if err != nil {
-				return fmt.Errorf("format platform reference failed: %w", err)
-			}
 			slog.InfoContext(
 				ctx,
 				"tag platform image",
@@ -235,16 +242,6 @@ func (b *Builder) buildAndPushMultiplatformImage(
 			if err = b.container.TagImage(ctx, loadedRef, platformTag); err != nil {
 				return fmt.Errorf("tag image failed: %w", err)
 			}
-			slog.InfoContext(
-				ctx,
-				"platform image tagged",
-				"ref",
-				ref.Name(),
-				"platform",
-				formatSystemName(p),
-				"platform_ref",
-				platformTag.Name(),
-			)
 			slog.InfoContext(
 				ctx,
 				"push platform image",

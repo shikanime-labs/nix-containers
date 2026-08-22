@@ -38,13 +38,3 @@ jobs:
         run:
           gh pr edit "${{ github.event.pull_request.number }}" --add-label
           dependencies
-      - env:
-          GH_TOKEN:
-            ${{ steps.createGithubAppToken.outputs.token || secrets.GITHUB_TOKEN
-            }}
-        if:
-          startsWith(github.head_ref, 'gh/') && endsWith(github.head_ref,
-          '/head')
-        run:
-          gh pr edit "${{ github.event.pull_request.number }}" --add-label
-          ghstack

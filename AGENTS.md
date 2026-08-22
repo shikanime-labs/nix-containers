@@ -21,12 +21,11 @@ directly from the CLI.
 
 ## Stack
 
-- 1 commit == 1 PR via ghstack
-- Amend + `ghstack` to resubmit
-- `ghstack land` on head PR to land the entire stack
-- Never `gh pr merge` (creates poisoned commits)
-- Never force-push ghstack branches
-- ghstack only works on HEAD commit chains, not detached HEADs
+- One feature/fix == one branch == one PR, opened with `gh pr create`.
+- Re-submit by amending the branch and force-pushing the feature branch
+  (never rewrite `main`).
+- Land via `gh pr merge --squash` once review approval is in.
+- Keep history linear: no merge commits into `main`.
 
 ## Protect `main`
 
