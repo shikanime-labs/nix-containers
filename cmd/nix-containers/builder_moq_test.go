@@ -5,11 +5,10 @@ package main
 
 import (
 	"context"
-	"sync"
-
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
+	"sync"
 )
 
 // Ensure, that mockNixBuilderClient does implement nixBuilderClient.
@@ -25,9 +24,6 @@ var _ nixBuilderClient = &mockNixBuilderClient{}
 //			BuildPlatformImageFunc: func(contextMoqParam context.Context, s string, reference name.Reference, platform *v1.Platform, imageOptionMoqParams ...imageOption) (string, error) {
 //				panic("mock out the BuildPlatformImage method")
 //			},
-//			GetImageBuilderTypeFunc: func(contextMoqParam context.Context, s string, reference name.Reference, platform *v1.Platform, imageOptionMoqParams ...imageOption) (BuilderType, error) {
-//				panic("mock out the GetImageBuilderType method")
-//			},
 //		}
 //
 //		// use mockednixBuilderClient in code that requires nixBuilderClient
@@ -37,9 +33,6 @@ var _ nixBuilderClient = &mockNixBuilderClient{}
 type mockNixBuilderClient struct {
 	// BuildPlatformImageFunc mocks the BuildPlatformImage method.
 	BuildPlatformImageFunc func(contextMoqParam context.Context, s string, reference name.Reference, platform *v1.Platform, imageOptionMoqParams ...imageOption) (string, error)
-
-	// GetImageBuilderTypeFunc mocks the GetImageBuilderType method.
-	GetImageBuilderTypeFunc func(contextMoqParam context.Context, s string, reference name.Reference, platform *v1.Platform, imageOptionMoqParams ...imageOption) (BuilderType, error)
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -56,22 +49,8 @@ type mockNixBuilderClient struct {
 			// ImageOptionMoqParams is the imageOptionMoqParams argument value.
 			ImageOptionMoqParams []imageOption
 		}
-		// GetImageBuilderType holds details about calls to the GetImageBuilderType method.
-		GetImageBuilderType []struct {
-			// ContextMoqParam is the contextMoqParam argument value.
-			ContextMoqParam context.Context
-			// S is the s argument value.
-			S string
-			// Reference is the reference argument value.
-			Reference name.Reference
-			// Platform is the platform argument value.
-			Platform *v1.Platform
-			// ImageOptionMoqParams is the imageOptionMoqParams argument value.
-			ImageOptionMoqParams []imageOption
-		}
 	}
-	lockBuildPlatformImage  sync.RWMutex
-	lockGetImageBuilderType sync.RWMutex
+	lockBuildPlatformImage sync.RWMutex
 }
 
 // BuildPlatformImage calls BuildPlatformImageFunc.
@@ -126,58 +105,6 @@ func (mock *mockNixBuilderClient) BuildPlatformImageCalls() []struct {
 	return calls
 }
 
-// GetImageBuilderType calls GetImageBuilderTypeFunc.
-func (mock *mockNixBuilderClient) GetImageBuilderType(contextMoqParam context.Context, s string, reference name.Reference, platform *v1.Platform, imageOptionMoqParams ...imageOption) (BuilderType, error) {
-	callInfo := struct {
-		ContextMoqParam      context.Context
-		S                    string
-		Reference            name.Reference
-		Platform             *v1.Platform
-		ImageOptionMoqParams []imageOption
-	}{
-		ContextMoqParam:      contextMoqParam,
-		S:                    s,
-		Reference:            reference,
-		Platform:             platform,
-		ImageOptionMoqParams: imageOptionMoqParams,
-	}
-	mock.lockGetImageBuilderType.Lock()
-	mock.calls.GetImageBuilderType = append(mock.calls.GetImageBuilderType, callInfo)
-	mock.lockGetImageBuilderType.Unlock()
-	if mock.GetImageBuilderTypeFunc == nil {
-		var (
-			builderTypeOut BuilderType
-			errOut         error
-		)
-		return builderTypeOut, errOut
-	}
-	return mock.GetImageBuilderTypeFunc(contextMoqParam, s, reference, platform, imageOptionMoqParams...)
-}
-
-// GetImageBuilderTypeCalls gets all the calls that were made to GetImageBuilderType.
-// Check the length with:
-//
-//	len(mockednixBuilderClient.GetImageBuilderTypeCalls())
-func (mock *mockNixBuilderClient) GetImageBuilderTypeCalls() []struct {
-	ContextMoqParam      context.Context
-	S                    string
-	Reference            name.Reference
-	Platform             *v1.Platform
-	ImageOptionMoqParams []imageOption
-} {
-	var calls []struct {
-		ContextMoqParam      context.Context
-		S                    string
-		Reference            name.Reference
-		Platform             *v1.Platform
-		ImageOptionMoqParams []imageOption
-	}
-	mock.lockGetImageBuilderType.RLock()
-	calls = mock.calls.GetImageBuilderType
-	mock.lockGetImageBuilderType.RUnlock()
-	return calls
-}
-
 // Ensure, that mockContainerBuilderClient does implement containerBuilderClient.
 // If this is not the case, regenerate this file with moq.
 var _ containerBuilderClient = &mockContainerBuilderClient{}
@@ -191,12 +118,6 @@ var _ containerBuilderClient = &mockContainerBuilderClient{}
 //			CheckPushPermissionFunc: func(reference name.Reference) error {
 //				panic("mock out the CheckPushPermission method")
 //			},
-//			LoadImageFunc: func(contextMoqParam context.Context, reference name.Reference, s string) (name.Reference, error) {
-//				panic("mock out the LoadImage method")
-//			},
-//			LoadStreamImageFunc: func(contextMoqParam context.Context, reference name.Reference, s string) (name.Reference, error) {
-//				panic("mock out the LoadStreamImage method")
-//			},
 //			PushImageFunc: func(reference name.Reference, s string) error {
 //				panic("mock out the PushImage method")
 //			},
@@ -205,9 +126,6 @@ var _ containerBuilderClient = &mockContainerBuilderClient{}
 //			},
 //			PushPlatformImageFunc: func(reference name.Reference, platform *v1.Platform, s string) (mutate.IndexAddendum, error) {
 //				panic("mock out the PushPlatformImage method")
-//			},
-//			TagImageFunc: func(contextMoqParam context.Context, reference1 name.Reference, reference2 name.Reference) error {
-//				panic("mock out the TagImage method")
 //			},
 //		}
 //
@@ -219,12 +137,6 @@ type mockContainerBuilderClient struct {
 	// CheckPushPermissionFunc mocks the CheckPushPermission method.
 	CheckPushPermissionFunc func(reference name.Reference) error
 
-	// LoadImageFunc mocks the LoadImage method.
-	LoadImageFunc func(contextMoqParam context.Context, reference name.Reference, s string) (name.Reference, error)
-
-	// LoadStreamImageFunc mocks the LoadStreamImage method.
-	LoadStreamImageFunc func(contextMoqParam context.Context, reference name.Reference, s string) (name.Reference, error)
-
 	// PushImageFunc mocks the PushImage method.
 	PushImageFunc func(reference name.Reference, s string) error
 
@@ -234,33 +146,12 @@ type mockContainerBuilderClient struct {
 	// PushPlatformImageFunc mocks the PushPlatformImage method.
 	PushPlatformImageFunc func(reference name.Reference, platform *v1.Platform, s string) (mutate.IndexAddendum, error)
 
-	// TagImageFunc mocks the TagImage method.
-	TagImageFunc func(contextMoqParam context.Context, reference1 name.Reference, reference2 name.Reference) error
-
 	// calls tracks calls to the methods.
 	calls struct {
 		// CheckPushPermission holds details about calls to the CheckPushPermission method.
 		CheckPushPermission []struct {
 			// Reference is the reference argument value.
 			Reference name.Reference
-		}
-		// LoadImage holds details about calls to the LoadImage method.
-		LoadImage []struct {
-			// ContextMoqParam is the contextMoqParam argument value.
-			ContextMoqParam context.Context
-			// Reference is the reference argument value.
-			Reference name.Reference
-			// S is the s argument value.
-			S string
-		}
-		// LoadStreamImage holds details about calls to the LoadStreamImage method.
-		LoadStreamImage []struct {
-			// ContextMoqParam is the contextMoqParam argument value.
-			ContextMoqParam context.Context
-			// Reference is the reference argument value.
-			Reference name.Reference
-			// S is the s argument value.
-			S string
 		}
 		// PushImage holds details about calls to the PushImage method.
 		PushImage []struct {
@@ -285,23 +176,11 @@ type mockContainerBuilderClient struct {
 			// S is the s argument value.
 			S string
 		}
-		// TagImage holds details about calls to the TagImage method.
-		TagImage []struct {
-			// ContextMoqParam is the contextMoqParam argument value.
-			ContextMoqParam context.Context
-			// Reference1 is the reference1 argument value.
-			Reference1 name.Reference
-			// Reference2 is the reference2 argument value.
-			Reference2 name.Reference
-		}
 	}
 	lockCheckPushPermission sync.RWMutex
-	lockLoadImage           sync.RWMutex
-	lockLoadStreamImage     sync.RWMutex
 	lockPushImage           sync.RWMutex
 	lockPushManifest        sync.RWMutex
 	lockPushPlatformImage   sync.RWMutex
-	lockTagImage            sync.RWMutex
 }
 
 // CheckPushPermission calls CheckPushPermissionFunc.
@@ -315,7 +194,9 @@ func (mock *mockContainerBuilderClient) CheckPushPermission(reference name.Refer
 	mock.calls.CheckPushPermission = append(mock.calls.CheckPushPermission, callInfo)
 	mock.lockCheckPushPermission.Unlock()
 	if mock.CheckPushPermissionFunc == nil {
-		var errOut error
+		var (
+			errOut error
+		)
 		return errOut
 	}
 	return mock.CheckPushPermissionFunc(reference)
@@ -337,94 +218,6 @@ func (mock *mockContainerBuilderClient) CheckPushPermissionCalls() []struct {
 	return calls
 }
 
-// LoadImage calls LoadImageFunc.
-func (mock *mockContainerBuilderClient) LoadImage(contextMoqParam context.Context, reference name.Reference, s string) (name.Reference, error) {
-	callInfo := struct {
-		ContextMoqParam context.Context
-		Reference       name.Reference
-		S               string
-	}{
-		ContextMoqParam: contextMoqParam,
-		Reference:       reference,
-		S:               s,
-	}
-	mock.lockLoadImage.Lock()
-	mock.calls.LoadImage = append(mock.calls.LoadImage, callInfo)
-	mock.lockLoadImage.Unlock()
-	if mock.LoadImageFunc == nil {
-		var (
-			referenceOut name.Reference
-			errOut       error
-		)
-		return referenceOut, errOut
-	}
-	return mock.LoadImageFunc(contextMoqParam, reference, s)
-}
-
-// LoadImageCalls gets all the calls that were made to LoadImage.
-// Check the length with:
-//
-//	len(mockedcontainerBuilderClient.LoadImageCalls())
-func (mock *mockContainerBuilderClient) LoadImageCalls() []struct {
-	ContextMoqParam context.Context
-	Reference       name.Reference
-	S               string
-} {
-	var calls []struct {
-		ContextMoqParam context.Context
-		Reference       name.Reference
-		S               string
-	}
-	mock.lockLoadImage.RLock()
-	calls = mock.calls.LoadImage
-	mock.lockLoadImage.RUnlock()
-	return calls
-}
-
-// LoadStreamImage calls LoadStreamImageFunc.
-func (mock *mockContainerBuilderClient) LoadStreamImage(contextMoqParam context.Context, reference name.Reference, s string) (name.Reference, error) {
-	callInfo := struct {
-		ContextMoqParam context.Context
-		Reference       name.Reference
-		S               string
-	}{
-		ContextMoqParam: contextMoqParam,
-		Reference:       reference,
-		S:               s,
-	}
-	mock.lockLoadStreamImage.Lock()
-	mock.calls.LoadStreamImage = append(mock.calls.LoadStreamImage, callInfo)
-	mock.lockLoadStreamImage.Unlock()
-	if mock.LoadStreamImageFunc == nil {
-		var (
-			referenceOut name.Reference
-			errOut       error
-		)
-		return referenceOut, errOut
-	}
-	return mock.LoadStreamImageFunc(contextMoqParam, reference, s)
-}
-
-// LoadStreamImageCalls gets all the calls that were made to LoadStreamImage.
-// Check the length with:
-//
-//	len(mockedcontainerBuilderClient.LoadStreamImageCalls())
-func (mock *mockContainerBuilderClient) LoadStreamImageCalls() []struct {
-	ContextMoqParam context.Context
-	Reference       name.Reference
-	S               string
-} {
-	var calls []struct {
-		ContextMoqParam context.Context
-		Reference       name.Reference
-		S               string
-	}
-	mock.lockLoadStreamImage.RLock()
-	calls = mock.calls.LoadStreamImage
-	mock.lockLoadStreamImage.RUnlock()
-	return calls
-}
-
 // PushImage calls PushImageFunc.
 func (mock *mockContainerBuilderClient) PushImage(reference name.Reference, s string) error {
 	callInfo := struct {
@@ -438,7 +231,9 @@ func (mock *mockContainerBuilderClient) PushImage(reference name.Reference, s st
 	mock.calls.PushImage = append(mock.calls.PushImage, callInfo)
 	mock.lockPushImage.Unlock()
 	if mock.PushImageFunc == nil {
-		var errOut error
+		var (
+			errOut error
+		)
 		return errOut
 	}
 	return mock.PushImageFunc(reference, s)
@@ -475,7 +270,9 @@ func (mock *mockContainerBuilderClient) PushManifest(reference name.Reference, i
 	mock.calls.PushManifest = append(mock.calls.PushManifest, callInfo)
 	mock.lockPushManifest.Unlock()
 	if mock.PushManifestFunc == nil {
-		var errOut error
+		var (
+			errOut error
+		)
 		return errOut
 	}
 	return mock.PushManifestFunc(reference, indexAddendums)
@@ -540,46 +337,5 @@ func (mock *mockContainerBuilderClient) PushPlatformImageCalls() []struct {
 	mock.lockPushPlatformImage.RLock()
 	calls = mock.calls.PushPlatformImage
 	mock.lockPushPlatformImage.RUnlock()
-	return calls
-}
-
-// TagImage calls TagImageFunc.
-func (mock *mockContainerBuilderClient) TagImage(contextMoqParam context.Context, reference1 name.Reference, reference2 name.Reference) error {
-	callInfo := struct {
-		ContextMoqParam context.Context
-		Reference1      name.Reference
-		Reference2      name.Reference
-	}{
-		ContextMoqParam: contextMoqParam,
-		Reference1:      reference1,
-		Reference2:      reference2,
-	}
-	mock.lockTagImage.Lock()
-	mock.calls.TagImage = append(mock.calls.TagImage, callInfo)
-	mock.lockTagImage.Unlock()
-	if mock.TagImageFunc == nil {
-		var errOut error
-		return errOut
-	}
-	return mock.TagImageFunc(contextMoqParam, reference1, reference2)
-}
-
-// TagImageCalls gets all the calls that were made to TagImage.
-// Check the length with:
-//
-//	len(mockedcontainerBuilderClient.TagImageCalls())
-func (mock *mockContainerBuilderClient) TagImageCalls() []struct {
-	ContextMoqParam context.Context
-	Reference1      name.Reference
-	Reference2      name.Reference
-} {
-	var calls []struct {
-		ContextMoqParam context.Context
-		Reference1      name.Reference
-		Reference2      name.Reference
-	}
-	mock.lockTagImage.RLock()
-	calls = mock.calls.TagImage
-	mock.lockTagImage.RUnlock()
 	return calls
 }

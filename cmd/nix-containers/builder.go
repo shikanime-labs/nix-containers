@@ -21,13 +21,6 @@ type buildOption struct {
 }
 
 type nixBuilderClient interface {
-	GetImageBuilderType(
-		context.Context,
-		string,
-		name.Reference,
-		*v1.Platform,
-		...imageOption,
-	) (BuilderType, error)
 	BuildPlatformImage(
 		context.Context,
 		string,
@@ -39,9 +32,6 @@ type nixBuilderClient interface {
 
 type containerBuilderClient interface {
 	CheckPushPermission(name.Reference) error
-	TagImage(context.Context, name.Reference, name.Reference) error
-	LoadImage(context.Context, name.Reference, string) (name.Reference, error)
-	LoadStreamImage(context.Context, name.Reference, string) (name.Reference, error)
 	PushImage(name.Reference, string) error
 	PushPlatformImage(name.Reference, *v1.Platform, string) (mutate.IndexAddendum, error)
 	PushManifest(name.Reference, []mutate.IndexAddendum) error
@@ -117,14 +107,15 @@ func (b *Builder) BuildAndPush(
 	return b.buildAndPushMultiplatformImage(ctx, buildContext, ref, plats)
 }
 
-func (b *Builder) buildPlatformImage(
+// buildPlatformPath runs the nix build for one platform and returns the
+// local tarball path. The tarball is pushed directly (no docker load/tag) — the
+// daemon round-trip was redundant and broke on docker 28.
+func (b *Builder) buildPlatformPath(
 	ctx context.Context,
 	buildContext string,
-	p *v1.Platform,
 	ref name.Reference,
-) (name.Reference, string, error) {
-	slog.InfoContext(ctx, "build image", "ref", ref.Name(), "os", p.OS, "arch", p.Architecture)
-
+	p *v1.Platform,
+) (string, error) {
 	bctx, bspan := startSpan(ctx, "nix.build.image",
 		attribute.String("ref", ref.Name()),
 		attribute.String("os", p.OS),
@@ -139,56 +130,9 @@ func (b *Builder) buildPlatformImage(
 	)
 	bspan.End()
 	if err != nil {
-		return nil, "", fmt.Errorf("build image failed: %w", err)
+		return "", fmt.Errorf("build image failed: %w", err)
 	}
-
-	builderType, err := b.nix.GetImageBuilderType(ctx, buildContext, ref, p, b.imageOpts...)
-	if err != nil {
-		return nil, "", fmt.Errorf("check image builder type failed: %w", err)
-	}
-	slog.InfoContext(
-		ctx,
-		"image builder type resolved",
-		"ref",
-		ref.Name(),
-		"platform",
-		formatSystemName(p),
-		"builder_type",
-		builderType,
-		"path",
-		path,
-	)
-
-	if builderType == StreamBuilderType {
-		slog.InfoContext(
-			ctx,
-			"load stream image",
-			"ref",
-			ref.Name(),
-			"platform",
-			formatSystemName(p),
-			"path",
-			path,
-		)
-		loadedRef, err := b.container.LoadStreamImage(ctx, ref, path)
-		return loadedRef, path, err
-	}
-	if builderType == TarGzBuilderType {
-		slog.InfoContext(
-			ctx,
-			"load archive image",
-			"ref",
-			ref.Name(),
-			"platform",
-			formatSystemName(p),
-			"path",
-			path,
-		)
-		loadedRef, err := b.container.LoadImage(ctx, ref, path)
-		return loadedRef, path, err
-	}
-
-	return nil, "", fmt.Errorf("unknown builder type: %d", builderType)
+	return path, nil
 }
 
 func (b *Builder) buildAndPushMultiplatformImage(
@@ -217,24 +161,19 @@ func (b *Builder) buildAndPushMultiplatformImage(
 			slog.InfoContext(
 				ctx,
 				"platform pipeline started",
-				"ref",
-				ref.Name(),
-				"platform",
-				formatSystemName(p),
+				"ref", ref.Name(),
+				"platform", formatSystemName(p),
 			)
-			loadedRef, path, err := b.buildPlatformImage(pctx, buildContext, p, ref)
+			path, err := b.buildPlatformPath(pctx, buildContext, ref, p)
 			if err != nil {
 				return err
 			}
 			slog.InfoContext(
 				ctx,
-				"platform image loaded",
-				"ref",
-				ref.Name(),
-				"platform",
-				formatSystemName(p),
-				"loaded_ref",
-				loadedRef.Name(),
+				"platform image built",
+				"ref", ref.Name(),
+				"platform", formatSystemName(p),
+				"path", path,
 			)
 			platformTag, err := formatPlatformReference(ref, p)
 			if err != nil {
@@ -242,36 +181,10 @@ func (b *Builder) buildAndPushMultiplatformImage(
 			}
 			slog.InfoContext(
 				ctx,
-				"tag platform image",
-				"ref",
-				ref.Name(),
-				"platform",
-				formatSystemName(p),
-				"platform_ref",
-				platformTag.Name(),
-			)
-			if err = b.container.TagImage(ctx, loadedRef, platformTag); err != nil {
-				return fmt.Errorf("tag image failed: %w", err)
-			}
-			slog.InfoContext(
-				ctx,
-				"platform image tagged",
-				"ref",
-				ref.Name(),
-				"platform",
-				formatSystemName(p),
-				"platform_ref",
-				platformTag.Name(),
-			)
-			slog.InfoContext(
-				ctx,
 				"push platform image",
-				"ref",
-				ref.Name(),
-				"platform",
-				formatSystemName(p),
-				"platform_ref",
-				platformTag.Name(),
+				"ref", ref.Name(),
+				"platform", formatSystemName(p),
+				"platform_ref", platformTag.Name(),
 			)
 			add, err := b.container.PushPlatformImage(platformTag, p, path)
 			if err != nil {
@@ -280,12 +193,9 @@ func (b *Builder) buildAndPushMultiplatformImage(
 			slog.InfoContext(
 				ctx,
 				"platform image pushed",
-				"ref",
-				ref.Name(),
-				"platform",
-				formatSystemName(p),
-				"platform_ref",
-				platformTag.Name(),
+				"ref", ref.Name(),
+				"platform", formatSystemName(p),
+				"platform_ref", platformTag.Name(),
 			)
 			addsMu.Lock()
 			adds = append(adds, add)
@@ -293,10 +203,8 @@ func (b *Builder) buildAndPushMultiplatformImage(
 			slog.InfoContext(
 				ctx,
 				"platform pipeline completed",
-				"ref",
-				ref.Name(),
-				"platform",
-				formatSystemName(p),
+				"ref", ref.Name(),
+				"platform", formatSystemName(p),
 			)
 			return nil
 		})
@@ -318,15 +226,9 @@ func (b *Builder) buildAndPushImage(
 	ref name.Reference,
 	p *v1.Platform,
 ) error {
-	loadedRef, path, err := b.buildPlatformImage(ctx, buildContext, p, ref)
+	path, err := b.buildPlatformPath(ctx, buildContext, ref, p)
 	if err != nil {
 		return fmt.Errorf("build flake image failed: %w", err)
-	}
-	if loadedRef != ref {
-		slog.DebugContext(ctx, "tag image", "ref", ref.Name(), "loadedRef", loadedRef.Name())
-		if err = b.container.TagImage(ctx, loadedRef, ref); err != nil {
-			return fmt.Errorf("tag image failed: %w", err)
-		}
 	}
 	if b.push {
 		slog.DebugContext(ctx, "push image", "ref", ref.Name())
