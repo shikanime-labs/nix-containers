@@ -65,6 +65,10 @@ func setupTracing(ctx context.Context) func(context.Context) error {
 }
 
 // startSpan starts a span on the package tracer, attaching the given attributes.
-func startSpan(ctx context.Context, name string, attrs ...attribute.KeyValue) (context.Context, oteltrace.Span) {
+func startSpan(
+	ctx context.Context,
+	name string,
+	attrs ...attribute.KeyValue,
+) (context.Context, oteltrace.Span) {
 	return otel.Tracer(tracerName).Start(ctx, name, oteltrace.WithAttributes(attrs...))
 }
