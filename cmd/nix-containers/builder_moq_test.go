@@ -5,10 +5,11 @@ package main
 
 import (
 	"context"
+	"sync"
+
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
-	"sync"
 )
 
 // Ensure, that mockNixBuilderClient does implement nixBuilderClient.
@@ -194,9 +195,7 @@ func (mock *mockContainerBuilderClient) CheckPushPermission(reference name.Refer
 	mock.calls.CheckPushPermission = append(mock.calls.CheckPushPermission, callInfo)
 	mock.lockCheckPushPermission.Unlock()
 	if mock.CheckPushPermissionFunc == nil {
-		var (
-			errOut error
-		)
+		var errOut error
 		return errOut
 	}
 	return mock.CheckPushPermissionFunc(reference)
@@ -231,9 +230,7 @@ func (mock *mockContainerBuilderClient) PushImage(reference name.Reference, s st
 	mock.calls.PushImage = append(mock.calls.PushImage, callInfo)
 	mock.lockPushImage.Unlock()
 	if mock.PushImageFunc == nil {
-		var (
-			errOut error
-		)
+		var errOut error
 		return errOut
 	}
 	return mock.PushImageFunc(reference, s)
@@ -270,9 +267,7 @@ func (mock *mockContainerBuilderClient) PushManifest(reference name.Reference, i
 	mock.calls.PushManifest = append(mock.calls.PushManifest, callInfo)
 	mock.lockPushManifest.Unlock()
 	if mock.PushManifestFunc == nil {
-		var (
-			errOut error
-		)
+		var errOut error
 		return errOut
 	}
 	return mock.PushManifestFunc(reference, indexAddendums)
