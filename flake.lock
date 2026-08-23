@@ -236,7 +236,7 @@
       "locked": {
         "lastModified": 1787489772,
         "narHash": "sha256-HIDJcIlyd+YztD6dFO4F0/hYmBSVw0Wvs6qjBKXpsH4=",
-        "owner": "shikanime-labs",
+        "owner": "shikanime-studio",
         "repo": "devlib",
         "rev": "ac3e8bf8821815521fe5c22620a5ab7512dc548b",
         "type": "github"
@@ -589,11 +589,11 @@
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1787209939,
-        "narHash": "sha256-WvvHR4kSQLAbtouMC/ruZ5UpLwlUcY3K4FAllMN+yGk=",
+        "lastModified": 1787364730,
+        "narHash": "sha256-NcYt9QJfpJiF1lAyN8BDPB4EeScbPU+EwQqPiBElrpU=",
         "owner": "nixos",
         "repo": "nixpkgs",
-        "rev": "391b592eb44808b3bd0cb80bb71b63a5a118b8bb",
+        "rev": "a831408e6378bc02ebf8cc09b52c96ca86f6bab4",
         "type": "github"
       },
       "original": {
