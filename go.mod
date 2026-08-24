@@ -3,7 +3,7 @@ module github.com/shikanime-studio/nix-containers
 go 1.25.2
 
 require (
-	github.com/docker/docker v28.4.0+incompatible
+	github.com/docker/docker v28.5.2+incompatible
 	github.com/google/go-containerregistry v0.21.9
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
