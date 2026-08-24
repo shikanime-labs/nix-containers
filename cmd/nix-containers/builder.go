@@ -186,7 +186,13 @@ func (b *Builder) buildAndPushMultiplatformImage(
 				"platform", formatSystemName(p),
 				"platform_ref", platformTag.Name(),
 			)
+			pctx, pushSpan := startSpan(pctx, "nix.push.platform",
+				attribute.String("ref", ref.Name()),
+				attribute.String("platform", formatSystemName(p)),
+				attribute.String("platform_ref", platformTag.Name()),
+			)
 			add, err := b.container.PushPlatformImage(platformTag, p, path)
+			pushSpan.End()
 			if err != nil {
 				return err
 			}
@@ -213,7 +219,13 @@ func (b *Builder) buildAndPushMultiplatformImage(
 		return fmt.Errorf("push images failed: %w", err)
 	}
 	slog.InfoContext(ctx, "push manifest", "ref", ref.Name(), "platform_count", len(adds))
-	if err := b.container.PushManifest(ref, adds); err != nil {
+	_, mspan := startSpan(ctx, "nix.push.manifest",
+		attribute.String("ref", ref.Name()),
+		attribute.Int("platform_count", len(adds)),
+	)
+	err := b.container.PushManifest(ref, adds)
+	mspan.End()
+	if err != nil {
 		return err
 	}
 	slog.InfoContext(ctx, "manifest pushed", "ref", ref.Name(), "platform_count", len(adds))
@@ -232,7 +244,12 @@ func (b *Builder) buildAndPushImage(
 	}
 	if b.push {
 		slog.DebugContext(ctx, "push image", "ref", ref.Name())
-		if err := b.container.PushImage(ref, path); err != nil {
+		_, pspan := startSpan(ctx, "nix.push.image",
+			attribute.String("ref", ref.Name()),
+		)
+		err := b.container.PushImage(ref, path)
+		pspan.End()
+		if err != nil {
 			return err
 		}
 	}
