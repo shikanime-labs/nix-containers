@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"strings"
 
 	"github.com/google/go-containerregistry/pkg/authn"
@@ -130,6 +131,26 @@ func (c *ContainerClient) PushManifest(
 
 func gzipPathOpener(path string) tarball.Opener {
 	return func() (io.ReadCloser, error) {
+		// streamLayeredImage output is an executable wrapper that writes the
+		// image tarball to stdout (it execs dockerTools' `stream` helper).
+		// Opening it as a file yields garbage → "unexpected EOF" at
+		// tarball.Image. Run it and stream stdout instead.
+		if fi, err := os.Stat(path); err == nil && fi.Mode()&0o111 != 0 {
+			cmd := exec.CommandContext(
+				context.Background(),
+				path,
+			) //nolint:gosec // path is a nix store derivation output
+			out, err := cmd.StdoutPipe()
+			if err != nil {
+				return nil, err
+			}
+			var stderr strings.Builder
+			cmd.Stderr = &stderr
+			if err := cmd.Start(); err != nil {
+				return nil, err
+			}
+			return &streamOpener{Reader: out, cmd: cmd, stderr: &stderr}, nil
+		}
 		f, err := os.Open(path)
 		if err != nil {
 			return nil, err
@@ -144,6 +165,25 @@ func gzipPathOpener(path string) tarball.Opener {
 		}
 		return f, nil
 	}
+}
+
+// streamOpener wraps a command's stdout pipe; Close waits for the process so
+// a truncated stream (non-zero exit) surfaces as an error instead of a silent EOF.
+type streamOpener struct {
+	io.Reader
+	cmd    *exec.Cmd
+	stderr *strings.Builder
+}
+
+func (c *streamOpener) Close() error {
+	if err := c.cmd.Wait(); err != nil {
+		msg := strings.TrimSpace(c.stderr.String())
+		if msg != "" {
+			return fmt.Errorf("%w: %s", err, msg)
+		}
+		return err
+	}
+	return nil
 }
 
 type gzipReadCloser struct {
