@@ -1,15 +1,18 @@
 // OpenTelemetry tracing for the nix-containers build pipeline.
 //
 // The OTLP/gRPC exporter reads its endpoint and TLS mode from the standard
-// OTEL_EXPORTER_OTLP_* environment variables (TRACES-specific take precedence).
-// With no endpoint set it defaults to https://localhost:4317 and export
-// failures are logged rather than fatal. Exporter init errors are logged and
-// never fail a build.
+// OTEL_EXPORTER_OTLP_* environment variables (TRACES-specific take precedence
+// over the generic one). With no endpoint configured, setupTracing is a true
+// no-op: it installs nothing and starts no exporter, so there is no network
+// traffic and no background overhead. Export failures are logged rather than
+// fatal, and exporter/provider init errors never fail a build.
 package main
 
 import (
 	"context"
 	"log/slog"
+	"os"
+	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -29,8 +32,30 @@ const version = "v0.1.0"
 // setupTracing installs a process-wide TracerProvider that exports spans over
 // OTLP/gRPC. It returns a shutdown function that flushes and stops the provider;
 // call it on process exit.
+//
+// With no OTLP endpoint configured (OTEL_EXPORTER_OTLP_ENDPOINT /
+// OTEL_EXPORTER_OTLP_TRACES_ENDPOINT) it is a no-op: the global no-op
+// TracerProvider is left in place, so startSpan produces zero-overhead,
+// network-free spans and the returned shutdown func does nothing.
 func setupTracing(ctx context.Context) func(context.Context) error {
-	exporter, err := otlptracegrpc.New(ctx)
+	// ponytail: single env check gates all tracing overhead; if other signal
+	// types (metrics/logs) get added, extend the guard rather than always init.
+	otlpEndpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+	otlpTracesEndpoint := os.Getenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT")
+	if otlpEndpoint == "" && otlpTracesEndpoint == "" {
+		slog.DebugContext(ctx, "no OTLP endpoint configured; tracing disabled")
+		return func(context.Context) error { return nil }
+	}
+
+	// Revert the TCP-only check; gRPC-level verification is needed because
+	// TCP dial succeeds on any open port (e.g. SSH on :4317), but the OTLP
+	// gRPC handshake then fails with connection errors.
+	// ponytail: grpc health check, if health pkg is vendored
+	exporter, err := otlptracegrpc.New(
+		ctx,
+		otlptracegrpc.WithTimeout(2*time.Second),
+		otlptracegrpc.WithReconnectionPeriod(5*time.Second),
+	)
 	if err != nil {
 		slog.WarnContext(ctx, "opentelemetry exporter init failed; tracing disabled", "err", err)
 		return func(context.Context) error { return nil }
